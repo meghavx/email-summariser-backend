@@ -1,12 +1,12 @@
 import psycopg2
 import binascii
+from typing import List
 
 # Path to the binary content file
-txt_file_path = "./uploads/binary_content.txt"
+pdf_file_path = "./uploads/SOP.pdf"
 
-# Read the binary content
-with open(txt_file_path, "rb") as txt_file:
-    binary_content = txt_file.read()
+with open(pdf_file_path, "rb") as fp:
+    binary_content = fp.read()
 
 # Convert to PostgreSQL compatible hexadecimal format
 hex_content = binascii.hexlify(binary_content).decode()
