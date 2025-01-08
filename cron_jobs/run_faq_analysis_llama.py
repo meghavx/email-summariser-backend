@@ -39,7 +39,7 @@ def update_staging_faq(thread: EmailThread) -> None:
     - Refer yourself as ABC support at the end of the mail.
     - Make sure to refer to the appropriate procedures mentioned in the subject and provide a comprehensive response,
     - including step-by-step guidelines, documentation, and any relevant timelines. Don't include the subject line in mail.
-    - Do not mention subject in the response!
+    - Do not mention subject in the response! Do not mention Image not found.
     - Also generate a percentage for how sufficient is the SOP document to generate an answer. Where 0% = topic not covered at all, 100% = topic is fully covered. 
     - Your output should be a JSON object that matches the following schema:
         {json_format}

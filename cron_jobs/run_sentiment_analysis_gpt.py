@@ -13,28 +13,25 @@ os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0.5, max_tokens=1000)
 
-def get_sentiment_score(text: str) -> int:
+def get_sentiment_text(text: str) -> str:
     messages = [
     (
         "system",
         f"""
         I will provide an email discussion thread between a customer and a customer support team for a supply chain company. 
         Based on the conversation, categorize the sentiment and urgency of the email using the following categories:
-    1. **Critical (Negative Urgency)**: 
+    1. **Critical**: 
         Emails that express high urgency, negative sentiment, or frustration. These emails require immediate action or resolution. 
-    2. **Needs Attention (Negative or Neutral)**: 
+    2. **Needs attention**: 
         Emails with moderate urgency or concern, which may include complaints, requests for clarification, or unresolved issues. 
         They may require follow-up but are not as pressing as critical emails.
-    3. **Neutral (No Immediate Action)**: 
-        Emails that are purely informational, with no immediate request or concern. These may provide updates, confirmations, or general communication.
-    4. **Positive (No Action Needed)**: Emails expressing satisfaction, appreciation, or positive feedback. 
-            No action or response is required unless it's to acknowledge the positive sentiment.
+    3. **Neutral**: 
+        Emails that are purely informational, with no immediate request or concern. These may provide updates, confirmations, or general communication. 
+        Or Emails expressing satisfaction, appreciation, or positive feedback.
+    4. Remember customer might write email in sarcastic way. Make sure to understand them.
 
-    5. Remember customer might write email in sarcastic way. Make sure to understand them.
-
-    Based on this, categorize each email in the thread and briefly explain why it fits into the chosen category.
-     Give me a number between 1 to 10 (> 8 means critical, >6 means needs attention, > 3 means neutral and else positive) \n
-     remember to only return the number and nothing else:\n\n
+    Based on this, categorize each email in the thread return the type (Critical, Needs Attention, Neutral).
+    remember to only return the type and nothing else:\n\n
     """,
     ),
     ("human", "Discussion: " + text),
@@ -44,22 +41,18 @@ def get_sentiment_score(text: str) -> int:
 
 def analyze_sentiment(text: str) -> Optional[str]:
     # Analyze sentiment
-    res = get_sentiment_score(text)
-    try:
-        sentiment_score = int(res.strip())
-    except ValueError:
-        print("Error parsing sentiment score.", res)
-        return 
-    
-    if sentiment_score >= 8:
-        sentiment = "Critical"
-    elif sentiment_score > 6:
-        sentiment = "Needs attention"  # Very negative sentiment
-    elif sentiment_score > 3:
-        sentiment = "Neutral"
+    res = get_sentiment_text(text)
+    temp = res.lower() 
+    if temp == "critical":
+        res = "Critical"
+    elif temp == "needs attention":
+        res = "Needs attention"
+    elif temp == "neutral":
+        res = "Neutral"
     else:
-        sentiment = "Positive"
-    return sentiment
+        print ("Parsing response failed :( ", res)
+        return "Positive"
+    return res
 
 def update_sentiment(thread: Optional[EmailThread]) -> None:
     if not thread:

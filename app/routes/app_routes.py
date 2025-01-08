@@ -1,9 +1,11 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 from ..models import EmailThread, Email, db, EmailThreadSentiment, SOPDocument
 from ..utils import getSentimentHelper, BUSINESS_SIDE_EMAIL, BUSINESS_SIDE_NAME, getCustomerNameAndEmail
 from datetime import datetime, timezone
 from typing import Union, Any, List, Dict
 from werkzeug.exceptions import BadRequest, NotFound  # Import for raising exceptions
+import os
+
 
 app = Blueprint('main', __name__)
 
@@ -39,7 +41,8 @@ def get_all_threads() -> Dict[str, Union[List[Dict], str]]:
             'isOpen': False,
             'isResolved': email.is_resolved,
             'coveragePercentage': email.coverage_percentage,
-            'coverageDescription' : email.coverage_description
+            'coverageDescription' : email.coverage_description,
+            'imagePath': email.image_path
         } for i, email in enumerate(sorted_emails)]
 
         thread_list.append({
@@ -50,60 +53,125 @@ def get_all_threads() -> Dict[str, Union[List[Dict], str]]:
         })
     return jsonify({"threads": thread_list, "time": datetime.now(timezone.utc).strftime("%d-%m-%y_%H:%M:%S")})
 
+ALLOWED_EXTENSIONS = {'png', 'jpeg', 'jpg'}
+MAX_IMAGE_SIZE = 500 * 1024  # 500KB
+UPLOAD_FOLDER = "/home/user/Documents/github/email-summarizer-backend/uploads"
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def spaces_to_underscore(txt: str) -> str:
+    new_txt = ""
+    for ch in txt:
+        if ch == " ":
+            new_txt += "_"
+        else:
+            new_txt += ch
+    return new_txt
+
+
 @app.route('/create/email', methods=['POST'])
 def create_email() -> Union[dict, BadRequest]:
-    data = request.json
-    if not data:
-        return jsonify({'error': 'unable to parse JSON'}), 400
-    # Validate the necessary fields
-    if not all(k in data for k in ("senderEmail", "subject", "content")):
+    if 'senderEmail' not in request.form or 'subject' not in request.form or 'content' not in request.form:
         return jsonify({'error': 'Missing required fields'}), 400
 
-    new_thread = EmailThread(thread_topic=data['subject'])
+    sender_email = request.form['senderEmail']
+    subject = request.form['subject']
+    content = request.form['content']
+    
+    # Handle the image file
+    image = request.files.get('image')
+    image_path = None
+    if image:
+        if not allowed_file(image.filename):
+            return jsonify({'error': 'Image type not allowed. Only PNG and JPEG are accepted.'}), 400
+        if len(image.read()) > MAX_IMAGE_SIZE:
+            return jsonify({'error': 'Image size exceeds the 500KB limit.'}), 400
+        image.seek(0)  # Reset the file pointer to the start
+
+        # Save the image or process it as needed
+        image_path = os.path.join(UPLOAD_FOLDER, spaces_to_underscore(image.filename))
+        image.save(image_path)
+
+    # Assuming EmailThread and Email are defined models
+    new_thread = EmailThread(thread_topic=subject)
     db.session.add(new_thread)
     db.session.flush()
 
     new_email = Email(
-        sender_email=data['senderEmail'],
-        sender_name=data['senderEmail'].split('@')[0],
+        sender_email=sender_email,
+        sender_name=sender_email.split('@')[0],
         thread_id=new_thread.thread_id,
-        email_subject=data['subject'],
-        email_content=data['content'],
+        email_subject=subject,
+        email_content=content,
         receiver_email=BUSINESS_SIDE_EMAIL,
         receiver_name=BUSINESS_SIDE_NAME,
-        email_received_at=db.func.now() 
+        email_received_at=db.func.now(),
+        image_path = image_path
     )
     db.session.add(new_email)
     db.session.commit()
 
-    return jsonify({'success': 'Email and thread created successfully', 'thread_id': new_thread.thread_id, 'email_record_id': new_email.email_record_id}), 201
+    return jsonify({'success': 'Email and thread created successfully', 
+                    'thread_id': new_thread.thread_id, 
+                    'email_record_id': new_email.email_record_id}), 201
 
 @app.route('/create/email/<int:thread_id>', methods=['POST'])
 def add_email_to_thread(thread_id: int) -> Union[dict, BadRequest, NotFound]:
-    data = request.json
-    if not data:
-        return jsonify({'error': 'unable to parse JSON'}), 400
-    if not all(k in data for k in ("senderEmail", "subject", "content")):
-        return jsonify({'error': 'Missing required fields'}), 400
+    sender_email = request.form['senderEmail']
+    subject = request.form['subject']
+    content = request.form['content']
+    
+    # Handle the image file
+    image = request.files.get('image')
+    image_path = None
+    if image:
+        if not allowed_file(image.filename):
+            return jsonify({'error': 'Image type not allowed. Only PNG and JPEG are accepted.'}), 400
+        if len(image.read()) > MAX_IMAGE_SIZE:
+            return jsonify({'error': 'Image size exceeds the 500KB limit.'}), 400
+        image.seek(0)  # Reset the file pointer to the start
+
+        # Save the image or process it as needed
+        image_path = os.path.join(UPLOAD_FOLDER, spaces_to_underscore(image.filename))
+        image.save(image_path)
 
     thread = EmailThread.query.get(thread_id)
     if not thread:
         return jsonify({'error': 'Thread not found'}), 404
-
     customerName, customerEmail = getCustomerNameAndEmail(thread.emails)
+
     new_email = Email(
-        sender_email=BUSINESS_SIDE_EMAIL,
-        sender_name=BUSINESS_SIDE_NAME,
-        thread_id=thread_id,
-        email_subject=data['subject'],
-        email_content=data['content'],
+        sender_email=sender_email,
+        sender_name=sender_email.split('@')[0],
+        thread_id = thread.thread_id,
+        email_subject=subject,
+        email_content=content,
         receiver_email=customerEmail,
         receiver_name=customerName,
-        email_received_at=db.func.now()
+        email_received_at=db.func.now(),
+        image_path = image_path
     )
     db.session.add(new_email)
     db.session.commit()
-    return jsonify({'success': 'Email added to thread', 'email_record_id': new_email.email_record_id}), 201
+
+    return jsonify({'success': 'Email and thread created successfully', 
+                    'thread_id': thread.thread_id, 
+                    'email_record_id': new_email.email_record_id}), 201
+
+@app.route("/download_img/<int:email_id>", methods=["GET"])
+def download_image(email_id: int):
+    email_record = Email.query.get(email_id)
+    if not email_record or not email_record.image_path:
+        return jsonify({'error': 'Image not found for this email ID'}), 404
+    image_path = email_record.image_path
+    if not os.path.isfile(image_path):
+        return jsonify({'error': 'Image file not found on server'}), 404
+    try:
+        return send_file(image_path, as_attachment=True, download_name="downloaded_image")
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.post('/upload_sop_doc/')
 def store_sop_doc_to_db() -> Union[dict, BadRequest]:

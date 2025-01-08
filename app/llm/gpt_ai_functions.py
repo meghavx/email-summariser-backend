@@ -18,13 +18,15 @@ embeddings = OpenAIEmbeddings()
 llm = ChatOpenAI(model="gpt-4o", temperature=0.5, max_tokens=1000)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"),)
 
+
 def get_answer_from_email(email_subject: str, email_message: str, sender_name: str, doc_content: str) -> Optional[Dict[str, str]]:
     text_chunks = text_splitter.split_text(doc_content)
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     qa = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=vector_store.as_retriever(search_kwargs={"k": 3})  # Increased k for broader search
+        llm=llm,
+        chain_type="stuff",
+        retriever=vector_store.as_retriever(
+            search_kwargs={"k": 3})  # Increased k for broader search
     )
 
     json_format = """
@@ -52,33 +54,39 @@ def get_answer_from_email(email_subject: str, email_message: str, sender_name: s
     Email exchanges: 
     {email_message}
     """
-    print ("email_message",email_message)
+    print("email_message", email_message)
     r = qa.run(prompt)
-    response_from_llm  = get_string_between_braces(r)
+    response_from_llm = get_string_between_braces(r)
     print("json response", response_from_llm)
     decodedResult = json.loads(response_from_llm)
     if (not decodedResult):
         return None
-    percentage = int(decodedResult['sop_coverage_percentage'].replace('%','').strip())
+    percentage = int(
+        decodedResult['sop_coverage_percentage'].replace('%', '').strip())
     coverage_description = decodedResult['description_for_coverage_percentage']
     faq = decodedResult['FAQ_based_on_email']
     return (decodedResult['sop_based_email_response'], percentage, coverage_description, faq)
 
-def get_summary_response(discussion_thread: str, summaryOption: Optional[str]) -> str:
+
+def get_summary_response(discussion_thread: str, summaryOption: Optional[str], encoded_image: Optional[str]) -> str:
     summaryPrompt = getSummaryPrompt(summaryOption)
+    prompt = f""" 
+        Make a short summary of the following email thread in a professional format, highlight if there is any important date.
+        If given, describe the image as well.
+        {summaryPrompt}
+        Discussion thread:
+        {discussion_thread}
+    """ 
+    contentForChat = [{  "type": "text", "text": prompt } ]
+    if encoded_image:
+        contentForChat.append({"type": "image_url","image_url": {"url": f"data:image/png;base64,{encoded_image}"}})
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-        {
-            "role": "user", "content": f"""
-
-            Make a short summary of the following email thread in a professional format, highlight if there is any important date.
-            {summaryPrompt}
-            Discussion thread:
-
-          """ + discussion_thread
-         }
-    ])
-    #  The response content has to be in the same language as input language.
+            {
+                "role": "user",
+                "content": contentForChat
+            }
+        ])
     response = completion.choices[0].message.content.strip()
     return response

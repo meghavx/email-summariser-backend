@@ -4,6 +4,9 @@ from ..utils import sortEmails, get_summary, get_pdf_content_by_doc_id, sop_emai
 from threading import Thread
 from .. import create_app
 from typing import Optional, Union, List, Dict
+import base64
+from PIL import Image
+from io import BytesIO
 
 app = Blueprint('ai', __name__)
 
@@ -87,6 +90,14 @@ def store_email_document() -> tuple[dict, int]:
            args=(thread_id, document_id)).start()
     return jsonify({'success': 'Processing started in background', 'thread_id': thread_id}), 200
 
+def encode_and_resize(image):
+    W, H = image.size
+    # image = image.resize((IMG_RES, int(IMG_RES * H / W)))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return encoded_image
+
 @app.post('/summarize/<int:thread_id>')
 def summarize_thread_by_id(thread_id: int) -> Union[Summary, dict]:
     summaryOption = request.args.get('option')
@@ -98,7 +109,13 @@ def summarize_thread_by_id(thread_id: int) -> Union[Summary, dict]:
     sorted_emails = sortEmails(thread.emails, True)
     discussion_thread = ""
 
+    encoded_image = None
+
     for email in sorted_emails:
+        if email.image_path:
+            image = Image.open(email.image_path)
+            encoded_image = encode_and_resize(image)
+
         sender = email.sender_email
         date = email.email_received_at.strftime(
             '%B %d, %Y %I:%M %p') if email.email_received_at else None
@@ -106,7 +123,7 @@ def summarize_thread_by_id(thread_id: int) -> Union[Summary, dict]:
         email_entry = f"From: {sender}\nDate: {date}\nContent: {content}\n\n"
         discussion_thread += email_entry
 
-    response = get_summary(discussion_thread, summaryOption)
+    response = get_summary(discussion_thread, summaryOption, encoded_image)
     thread_summary = Summary(
         thread_id=thread.thread_id,
         summary_content=response

@@ -25,6 +25,7 @@ class Email(db.Model):
     coverage_description = db.Column(db.Text)
     email_thread = db.relationship(
         'EmailThread', backref=db.backref('emails', lazy=True))
+    image_path = db.Column(db.Text)
 
 class Summary(db.Model):
     __tablename__ = 'summaries'

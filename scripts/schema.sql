@@ -19,7 +19,8 @@ CREATE TABLE emails (
   email_content TEXT NOT NULL,
   is_resolved Boolean DEFAULT true,
   coverage_percentage INT,
-  coverage_description text
+  coverage_description text,
+  image_path text
 );
 
 ALTER TABLE emails
